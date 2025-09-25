@@ -1,0 +1,55 @@
+{
+  "name": "Restaurant AI Product Extraction",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/webhook/product-upload",
+        "responseMode": "onReceived"
+      },
+      "id": "1",
+      "name": "Product Upload Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const { createWorker } = require('tesseract.js');\nconst { ChatOpenAI } = require('langchain/chat_models/openai');\nconst { HumanMessage } = require('langchain/schema');\n\nasync function extractProductInfo(imageUrl) {\n    // OCR with Tesseract\n    const worker = await createWorker('eng+ind');\n    const { data: { text } } = await worker.recognize(imageUrl);\n    await worker.terminate();\n    \n    // AI Analysis with LangChain\n    const model = new ChatOpenAI({ \n        openAIApiKey: process.env.OPENAI_API_KEY \n    });\n    \n    const prompt = `Extract product information from this text: ${text}. \n    Return JSON with: name, description, price (number only).`;\n    \n    const response = await model.call([new HumanMessage(prompt)]);\n    return JSON.parse(response.content);\n}\n\nreturn await extractProductInfo($input.first().json.imageUrl);"
+      },
+      "id": "2",
+      "name": "LangChain AI Extraction",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "domain": "{{ $env.N8N_DOMAIN }}",
+        "path": "/api/admin/save-product",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Product Upload Webhook": {
+      "main": [[{ "node": "LangChain AI Extraction", "type": "main", "index": 0 }]]
+    },
+    "LangChain AI Extraction": {
+      "main": [[{ "node": "Save to Database", "type": "main", "index": 0 }]]
+    }
+  }
+}
